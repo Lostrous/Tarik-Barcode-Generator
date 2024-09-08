@@ -1,0 +1,325 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Barcode Generator</title>
+    <!-- Include JsBarcode Library -->
+    <script src="https://cdn.jsdelivr.net/npm/jsbarcode@3.11.0/dist/JsBarcode.all.min.js"></script>
+    <!-- Include Dynamsoft Barcode Library -->
+    <script src="https://unpkg.com/dynamsoft-javascript-barcode/dist/dynamsoft.barcode.min.js"></script>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            margin: 20px;
+        }
+        #barcode {
+            margin: 20px 0;
+        }
+        .code-item {
+            margin: 10px 0;
+        }
+        #scanner-container {
+            width: 100%;
+            height: 300px;
+            position: relative;
+        }
+        #video {
+            width: 100%;
+            height: 100%;
+            position: absolute;
+            top: 0;
+            left: 0;
+            object-fit: cover;
+        }
+
+        /* Modal styles */
+        .modal {
+            display: none; /* Hidden by default */
+            position: fixed; /* Stay in place */
+            z-index: 1; /* Sit on top */
+            left: 0;
+            top: 0;
+            width: 100%; /* Full width */
+            height: 100%; /* Full height */
+            overflow: auto; /* Enable scroll if needed */
+            background-color: rgb(0,0,0); /* Fallback color */
+            background-color: rgba(0,0,0,0.4); /* Black w/ opacity */
+        }
+
+        .modal-content {
+            background-color: #fefefe;
+            margin: 15% auto; /* 15% from the top and centered */
+            padding: 20px;
+            border: 1px solid #888;
+            width: 80%; /* Could be more or less, depending on screen size */
+        }
+
+        .close {
+            color: #aaa;
+            float: right;
+            font-size: 28px;
+            font-weight: bold;
+        }
+
+        .close:hover,
+        .close:focus {
+            color: black;
+            text-decoration: none;
+            cursor: pointer;
+        }
+    </style>
+</head>
+<body>
+    <h1>Barcode Generator</h1>
+    
+    <label for="code">Enter Code:</label>
+    <input type="text" id="code" />
+    <button onclick="formatCode()">Format Code</button>
+
+    <div id="result-container">
+        <svg id="barcode"></svg>
+        <button id="confirm-button" style="display: none;" onclick="confirmCode()">Confirm Code</button>
+    </div>
+    
+    <h2>Previous Codes</h2>
+    <input type="text" id="searchBar" oninput="searchPreviousCodes()" placeholder="Search previous codes" />
+    <ul id="previous-codes-list"></ul>
+    
+    <h2>Barcode Scanner</h2>
+    <div id="scanner-container">
+        <video id="video"></video>
+    </div>
+    <button onclick="startScan()">Start Scan</button>
+
+    <!-- Modal for displaying the barcode -->
+    <div id="barcode-modal" class="modal">
+        <div class="modal-content">
+            <span class="close">&times;</span>
+            <h2>Generated Barcode</h2>
+            <svg id="modal-barcode"></svg>
+        </div>
+    </div>
+
+    <script>
+        const prefix = '9715';
+        const baseSuffix = '3300000101';
+        let currentResult = '';
+
+        function formatCode() {
+            let code = document.getElementById('code').value;
+            if (code.trim() === '') {
+                alert('Please enter a code.');
+                return;
+            }
+            let suffix = baseSuffix;
+            currentResult = `${prefix}${code}${suffix}`;
+            
+            // Generate barcode for the regular view
+            generateBarcode(currentResult);
+
+            // Show modal with the barcode
+            openModal();
+            
+            // Show button for confirming or adjusting the suffix
+            document.getElementById('confirm-button').style.display = 'block';
+        }
+
+        function confirmCode() {
+            let userResponse = prompt('Is the number correct? (Yes/No)').toLowerCase();
+            
+            if (userResponse === 'no') {
+                adjustSuffix();
+            } else if (userResponse === 'yes') {
+                let codeName = prompt('Please give a name for this code');
+                if (codeName) {
+                    storePreviousCode(codeName, currentResult);
+                }
+                alert('Number finalized.');
+                document.getElementById('confirm-button').style.display = 'none';
+            } else {
+                alert('Invalid response. Please enter "Yes" or "No".');
+            }
+        }
+
+        function adjustSuffix() {
+            let count = 1;
+            
+            function updateCode() {
+                let newSuffix = baseSuffix.replace('01', String(count + 1).padStart(2, '0'));
+                count++;
+                currentResult = `${prefix}${document.getElementById('code').value}${newSuffix}`;
+                
+                // Generate barcode with updated suffix
+                generateBarcode(currentResult);
+
+                // Show button for confirming or adjusting the new code
+                document.getElementById('confirm-button').style.display = 'block';
+
+                if (count > 9) {
+                    alert('You have reached the maximum allowed number adjustments.');
+                    document.getElementById('confirm-button').style.display = 'none';
+                }
+            }
+
+            updateCode();
+        }
+
+        function generateBarcode(text) {
+            // Generate barcode for the regular view
+            JsBarcode("#barcode", text, {
+                format: "CODE128",
+                lineColor: "#000",
+                width: 2,
+                height: 100,
+                displayValue: true
+            });
+
+            // Generate barcode for the modal view
+            JsBarcode("#modal-barcode", text, {
+                format: "CODE128",
+                lineColor: "#000",
+                width: 2,
+                height: 150,
+                displayValue: true
+            });
+        }
+
+        // Function to open the modal
+        function openModal() {
+            document.getElementById('barcode-modal').style.display = 'block';
+        }
+
+        // Function to close the modal
+        function closeModal() {
+            document.getElementById('barcode-modal').style.display = 'none';
+        }
+
+        // Close the modal when clicking on the "x"
+        document.querySelector('.close').addEventListener('click', closeModal);
+
+        // Close the modal when clicking outside of the modal
+        window.addEventListener('click', function(event) {
+            if (event.target === document.getElementById('barcode-modal')) {
+                closeModal();
+            }
+        });
+
+        function storePreviousCode(name, code) {
+            let previousCodes = JSON.parse(localStorage.getItem('previousCodes')) || [];
+            previousCodes.push({ name, code });
+            localStorage.setItem('previousCodes', JSON.stringify(previousCodes));
+            displayPreviousCodes();
+        }
+
+        function displayPreviousCodes() {
+            let previousCodes = JSON.parse(localStorage.getItem('previousCodes')) || [];
+            let list = document.getElementById('previous-codes-list');
+            list.innerHTML = '';
+            previousCodes.forEach((item, index) => {
+                let li = document.createElement('li');
+                li.classList.add('code-item');
+                li.innerHTML = `${item.name}: <svg id="barcode${index}" class="barcode"></svg> 
+                                <button onclick="codeDidNotWork(${index})">Code did not work</button>`;
+                list.appendChild(li);
+                // Generate barcode for the previous codes
+                JsBarcode(`#barcode${index}`, item.code, {
+                    format: "CODE128",
+                    lineColor: "#000",
+                    width: 2,
+                    height: 100,
+                    displayValue: true
+                });
+            });
+        }
+
+        function codeDidNotWork(index) {
+            let previousCodes = JSON.parse(localStorage.getItem('previousCodes')) || [];
+            let codeData = previousCodes[index];
+
+            let currentSuffix = codeData.code.slice(-10);
+            let currentIncrement = parseInt(currentSuffix.slice(8, 10), 10);
+
+            if (currentIncrement < 9) {
+                currentIncrement++;
+                let newSuffix = currentSuffix.slice(0, 8) + String(currentIncrement).padStart(2, '0');
+                let newCode = codeData.code.slice(0, -10) + newSuffix;
+
+                codeData.code = newCode;
+                previousCodes[index] = codeData;
+                localStorage.setItem('previousCodes', JSON.stringify(previousCodes));
+
+                displayPreviousCodes();
+                // Update barcode with new code
+                generateBarcode(newCode);
+            } else {
+                alert("The maximum number of retries has been reached.");
+            }
+        }
+
+        function searchPreviousCodes() {
+            let searchTerm = document.getElementById('searchBar').value.toLowerCase();
+            let previousCodes = JSON.parse(localStorage.getItem('previousCodes')) || [];
+            let filteredCodes = previousCodes.filter(item => 
+                item.name.toLowerCase().includes(searchTerm) || 
+                item.code.includes(searchTerm)
+            );
+
+            let list = document.getElementById('previous-codes-list');
+            list.innerHTML = '';
+            filteredCodes.forEach((item, index) => {
+                let li = document.createElement('li');
+                li.classList.add('code-item');
+                li.innerHTML = `${item.name}: <svg id="barcode${index}" class="barcode"></svg> 
+                                <button onclick="codeDidNotWork(${index})">Code did not work</button>`;
+                list.appendChild(li);
+                // Generate barcode for the filtered codes
+                JsBarcode(`#barcode${index}`, item.code, {
+                    format: "CODE128",
+                    lineColor: "#000",
+                    width: 2,
+                    height: 100,
+                    displayValue: true
+                });
+            });
+        }
+
+        function startScan() {
+            Dynamsoft.BarcodeReader.getInstance().then(reader => {
+                reader.decodeFromVideoDevice(null, 'video').then(results => {
+                    if (results.length > 0) {
+                        let scannedCode = results[0].barcodeText;
+                        formatScannedCode(scannedCode);
+                    }
+                }).catch(error => {
+                    console.error('Error scanning barcode: ', error);
+                });
+            }).catch(error => {
+                console.error('Error initializing barcode reader: ', error);
+            });
+        }
+
+        function formatScannedCode(code) {
+            if (code.trim() === '') {
+                alert('Scanned code is empty.');
+                return;
+            }
+            let suffix = baseSuffix;
+            currentResult = `${prefix}${code}${suffix}`;
+
+            // Generate barcode for the modal view
+            generateBarcode(currentResult);
+
+            // Show modal with the barcode
+            openModal();
+
+            // Show button for confirming or adjusting the suffix
+            document.getElementById('confirm-button').style.display = 'block';
+        }
+
+        // Display previously stored codes on page load
+        displayPreviousCodes();
+    </script>
+</body>
+</html>
+
